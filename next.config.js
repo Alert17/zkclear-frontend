@@ -11,6 +11,10 @@ const nextConfig = {
         source: '/jsonrpc',
         destination: 'http://localhost:3000/jsonrpc',
       },
+      {
+        source: '/health',
+        destination: 'http://localhost:3000/health',
+      },
     ]
   },
 }

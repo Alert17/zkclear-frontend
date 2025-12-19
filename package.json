@@ -4,9 +4,9 @@
   "description": "ZKClear Frontend — institutional UI for creating, signing, and managing OTC settlements with zero-knowledge guarantees.",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3001",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3001",
     "lint": "next lint"
   },
   "dependencies": {
@@ -14,9 +14,6 @@
     "react-dom": "^18.2.0",
     "next": "^14.0.4",
     "ethers": "^6.9.0",
-    "wagmi": "^2.3.0",
-    "@tanstack/react-query": "^5.12.0",
-    "zustand": "^4.4.7",
     "axios": "^1.6.2",
     "zod": "^3.22.4"
   },
