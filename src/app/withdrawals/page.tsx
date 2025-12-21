@@ -4,7 +4,12 @@ import { useState, useEffect } from 'react'
 import Layout from '@/components/Layout'
 import { api, AccountState } from '@/services/api'
 import { ethers } from 'ethers'
-import { formatAddress, formatAmount, parseAmount } from '@/utils/transactions'
+import {
+  formatAddress,
+  formatAmount,
+  parseAmount,
+  signTransactionCorrect,
+} from '@/utils/transactions'
 
 export default function Withdrawals() {
   const [address, setAddress] = useState<string | null>(null)
@@ -68,6 +73,11 @@ export default function Withdrawals() {
       return
     }
 
+    if (!accountState) {
+      alert('Please wait for account to load')
+      return
+    }
+
     if (!amount || parseFloat(amount) <= 0) {
       alert('Please enter a valid amount')
       return
@@ -82,14 +92,48 @@ export default function Withdrawals() {
     setError(null)
 
     try {
-      // TODO: Create and sign withdrawal transaction
-      // For now, show a message
-      alert(
-        `Withdrawal transaction creation will be implemented.\n\nAsset ID: ${assetId}\nAmount: ${amount}\nTo: ${to}\nChain ID: ${chainId}`
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const signer = await provider.getSigner()
+
+      const assetIdNum = parseInt(assetId)
+      const chainIdNum = parseInt(chainId)
+      const amountBigInt = parseAmount(amount)
+      const nonce = accountState.nonce
+
+      // Create transaction payload for signing
+      const payload = {
+        assetId: assetIdNum,
+        amount: amountBigInt.toString(),
+        to: to,
+        chainId: chainIdNum,
+      }
+
+      // Sign transaction
+      const signature = await signTransactionCorrect(
+        signer,
+        address,
+        nonce,
+        'Withdraw',
+        payload
       )
 
-      // After successful submission, reload account state
-      // await loadAccountState(address)
+      // Submit transaction
+      const submitRequest = {
+        kind: 'Withdraw',
+        from: address,
+        asset_id: assetIdNum,
+        amount: amountBigInt.toString(),
+        to: to,
+        chain_id: chainIdNum,
+        nonce: nonce,
+        signature: signature,
+      }
+
+      const result = await api.submitTransaction(submitRequest)
+      alert(`Withdrawal submitted successfully!\nTransaction Hash: ${result.tx_hash}`)
+
+      // Reload account state
+      await loadAccountState(address)
     } catch (err: any) {
       setError(err.message || 'Failed to process withdrawal')
       console.error('Error processing withdrawal:', err)

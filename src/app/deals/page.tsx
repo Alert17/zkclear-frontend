@@ -24,9 +24,16 @@ export default function Deals() {
     setLoading(true)
     setError(null)
     try {
-      // TODO: Add endpoint to list deals
-      // For now, show empty state
-      setDeals([])
+      const params: any = {}
+      if (filter === 'active') {
+        params.status = 'pending'
+      } else if (filter === 'completed') {
+        params.status = 'settled'
+      }
+      // TODO: Add address filter for 'my' deals when wallet is connected
+      
+      const response = await api.getDealsList(params)
+      setDeals(response.deals)
     } catch (err: any) {
       setError(err.message || 'Failed to load deals')
       console.error('Error loading deals:', err)

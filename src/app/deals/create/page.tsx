@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import { api } from '@/services/api'
 import { ethers } from 'ethers'
-import { parseAmount } from '@/utils/transactions'
+import { parseAmount, signTransactionCorrect } from '@/utils/transactions'
 
 export default function CreateDeal() {
   const router = useRouter()
@@ -71,13 +71,13 @@ export default function CreateDeal() {
       return
     }
 
-    if (!amountBase || !priceQuotePerBase) {
+    if (!dealId || !amountBase || !priceQuotePerBase) {
       alert('Please fill in all required fields')
       return
     }
 
-    if (visibility === 'private' && !taker) {
-      alert('Please specify taker address for private deals')
+    if (visibility === 'private' && (!taker || !ethers.isAddress(taker))) {
+      alert('Please specify a valid taker address for private deals')
       return
     }
 
@@ -88,27 +88,61 @@ export default function CreateDeal() {
       const provider = new ethers.BrowserProvider(window.ethereum)
       const signer = await provider.getSigner()
 
-      // Create transaction payload
+      const dealIdNum = parseInt(dealId)
+      const assetBaseNum = parseInt(assetBase)
+      const assetQuoteNum = parseInt(assetQuote)
+      const chainIdBaseNum = parseInt(chainIdBase)
+      const chainIdQuoteNum = parseInt(chainIdQuote)
+      const amountBaseBigInt = parseAmount(amountBase)
+      const priceBigInt = parseAmount(priceQuotePerBase)
+
+      // Create transaction payload for signing
       const payload = {
-        deal_id: parseInt(dealId),
-        visibility: visibility === 'public' ? 0 : 1,
+        dealId: dealIdNum,
+        visibility: visibility === 'public' ? 'Public' : 'Direct',
         taker: visibility === 'private' ? taker : null,
-        asset_base: parseInt(assetBase),
-        asset_quote: parseInt(assetQuote),
-        chain_id_base: parseInt(chainIdBase),
-        chain_id_quote: parseInt(chainIdQuote),
-        amount_base: parseAmount(amountBase).toString(),
-        price_quote_per_base: parseAmount(priceQuotePerBase).toString(),
+        assetBase: assetBaseNum,
+        assetQuote: assetQuoteNum,
+        chainIdBase: chainIdBaseNum,
+        chainIdQuote: chainIdQuoteNum,
+        amountBase: amountBaseBigInt.toString(),
+        priceQuotePerBase: priceBigInt.toString(),
       }
 
-      // TODO: Create and sign transaction, then submit via JSON-RPC
-      // For now, show a message
-      alert(
-        `Deal creation will be implemented with transaction signing.\n\nDeal ID: ${dealId}\nVisibility: ${visibility}\nAmount: ${amountBase}\nPrice: ${priceQuotePerBase}`
+      // Sign transaction
+      const nonce = accountState.nonce
+      const signature = await signTransactionCorrect(
+        signer,
+        address,
+        nonce,
+        'CreateDeal',
+        payload
       )
 
-      // After successful creation, redirect to deal details
-      // router.push(`/deals/${dealId}`)
+      // Submit transaction
+      const submitRequest = {
+        kind: 'CreateDeal',
+        from: address,
+        deal_id: dealIdNum,
+        visibility: visibility === 'public' ? 'Public' : 'Direct',
+        taker: visibility === 'private' ? taker : null,
+        asset_base: assetBaseNum,
+        asset_quote: assetQuoteNum,
+        chain_id_base: chainIdBaseNum,
+        chain_id_quote: chainIdQuoteNum,
+        amount_base: amountBaseBigInt.toString(),
+        price_quote_per_base: priceBigInt.toString(),
+        expires_at: null,
+        external_ref: null,
+        nonce: nonce,
+        signature: signature,
+      }
+
+      const result = await api.submitTransaction(submitRequest)
+      alert(`Deal created successfully!\nTransaction Hash: ${result.tx_hash}`)
+
+      // Redirect to deal details
+      router.push(`/deals/${dealId}`)
     } catch (err: any) {
       setError(err.message || 'Failed to create deal')
       console.error('Error creating deal:', err)

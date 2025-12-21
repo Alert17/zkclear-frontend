@@ -1,36 +1,38 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import { api, Deal } from '@/services/api'
-import { formatAddress, formatAmount } from '@/utils/transactions'
+import {
+  formatAddress,
+  formatAmount,
+  signTransactionCorrect,
+} from '@/utils/transactions'
+import { ethers } from 'ethers'
 
 export default function DealDetails() {
   const params = useParams()
   const router = useRouter()
-  const dealId = params.dealId as string
+  const dealId = (params?.dealId as string) || ''
   const [deal, setDeal] = useState<Deal | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [address, setAddress] = useState<string | null>(null)
+  const [accountState, setAccountState] = useState<any>(null)
+  const [processing, setProcessing] = useState(false)
 
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.ethereum) {
-      window.ethereum
-        .request({ method: 'eth_accounts' })
-        .then((accounts: string[]) => {
-          if (accounts.length > 0) {
-            setAddress(accounts[0])
-          }
-        })
-        .catch(console.error)
+  const loadAccountState = async (addr: string) => {
+    try {
+      const state = await api.getAccountState(addr)
+      setAccountState(state)
+    } catch (err) {
+      console.error('Error loading account state:', err)
     }
+  }
 
-    loadDeal()
-  }, [dealId])
-
-  const loadDeal = async () => {
+  const loadDeal = useCallback(async () => {
+    if (!dealId) return
     setLoading(true)
     setError(null)
     try {
@@ -42,31 +44,131 @@ export default function DealDetails() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [dealId])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.ethereum) {
+      window.ethereum
+        .request({ method: 'eth_accounts' })
+        .then((accounts: string[]) => {
+          if (accounts.length > 0) {
+            setAddress(accounts[0])
+            loadAccountState(accounts[0])
+          }
+        })
+        .catch(console.error)
+    }
+
+    if (dealId) {
+      loadDeal()
+    }
+  }, [dealId, loadDeal])
 
   const handleAcceptDeal = async () => {
-    if (!address) {
-      alert('Please connect your wallet')
+    if (!address || !window.ethereum || !accountState || !deal) {
+      alert('Please connect your wallet and wait for account to load')
       return
     }
 
-    // TODO: Implement accept deal transaction
-    alert('Accept deal functionality will be implemented')
+    setProcessing(true)
+    setError(null)
+
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const signer = await provider.getSigner()
+
+      const nonce = accountState.nonce
+      const payload = {
+        dealId: deal.deal_id,
+        amount: null, // Accept full amount
+      }
+
+      const signature = await signTransactionCorrect(
+        signer,
+        address,
+        nonce,
+        'AcceptDeal',
+        payload
+      )
+
+      const submitRequest = {
+        kind: 'AcceptDeal',
+        from: address,
+        deal_id: deal.deal_id,
+        amount: null,
+        nonce: nonce,
+        signature: signature,
+      }
+
+      const result = await api.submitTransaction(submitRequest)
+      alert(`Deal accepted successfully!\nTransaction Hash: ${result.tx_hash}`)
+
+      // Reload deal and account state
+      await loadDeal()
+      await loadAccountState(address)
+    } catch (err: any) {
+      setError(err.message || 'Failed to accept deal')
+      console.error('Error accepting deal:', err)
+    } finally {
+      setProcessing(false)
+    }
   }
 
   const handleCancelDeal = async () => {
-    if (!address) {
-      alert('Please connect your wallet')
+    if (!address || !window.ethereum || !accountState || !deal) {
+      alert('Please connect your wallet and wait for account to load')
       return
     }
 
-    if (deal?.maker.toLowerCase() !== address?.toLowerCase()) {
+    if (deal.maker.toLowerCase() !== address.toLowerCase()) {
       alert('Only the maker can cancel this deal')
       return
     }
 
-    // TODO: Implement cancel deal transaction
-    alert('Cancel deal functionality will be implemented')
+    if (!confirm('Are you sure you want to cancel this deal?')) {
+      return
+    }
+
+    setProcessing(true)
+    setError(null)
+
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const signer = await provider.getSigner()
+
+      const nonce = accountState.nonce
+      const payload = {
+        dealId: deal.deal_id,
+      }
+
+      const signature = await signTransactionCorrect(
+        signer,
+        address,
+        nonce,
+        'CancelDeal',
+        payload
+      )
+
+      const submitRequest = {
+        kind: 'CancelDeal',
+        from: address,
+        deal_id: deal.deal_id,
+        nonce: nonce,
+        signature: signature,
+      }
+
+      const result = await api.submitTransaction(submitRequest)
+      alert(`Deal cancelled successfully!\nTransaction Hash: ${result.tx_hash}`)
+
+      // Reload deal and account state
+      await loadDeal()
+      await loadAccountState(address)
+    } catch (err: any) {
+      setError(err.message || 'Failed to cancel deal')
+      console.error('Error cancelling deal:', err)
+    } finally {
+      setProcessing(false)
+    }
   }
 
   if (loading) {
@@ -185,23 +287,32 @@ export default function DealDetails() {
             </div>
           </div>
 
+          {/* Error Display */}
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-red-600">{error}</p>
+            </div>
+          )}
+
           {/* Actions */}
           {address && (
             <div className="flex space-x-4 pt-4 border-t">
               {canAccept && (
                 <button
                   onClick={handleAcceptDeal}
-                  className="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+                  disabled={processing}
+                  className="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
                 >
-                  Accept Deal
+                  {processing ? 'Processing...' : 'Accept Deal'}
                 </button>
               )}
               {isMaker && deal.status === 'pending' && (
                 <button
                   onClick={handleCancelDeal}
-                  className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                  disabled={processing}
+                  className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
                 >
-                  Cancel Deal
+                  {processing ? 'Processing...' : 'Cancel Deal'}
                 </button>
               )}
             </div>

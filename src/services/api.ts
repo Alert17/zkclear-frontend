@@ -82,6 +82,15 @@ export const api = {
   },
 
   // Deal endpoints
+  async getDealsList(params?: {
+    status?: string
+    address?: string
+    visibility?: string
+  }): Promise<{ deals: Deal[]; total: number }> {
+    const response = await apiClient.get('/api/v1/deals', { params })
+    return response.data
+  },
+
   async getDealDetails(dealId: number): Promise<Deal> {
     const response = await apiClient.get(`/api/v1/deal/${dealId}`)
     return response.data
@@ -113,6 +122,12 @@ export const api = {
       params,
       id: 1,
     })
+    return response.data
+  },
+
+  // Submit transaction
+  async submitTransaction(request: any) {
+    const response = await apiClient.post('/api/v1/transactions', request)
     return response.data
   },
 }

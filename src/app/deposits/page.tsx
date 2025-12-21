@@ -4,7 +4,13 @@ import { useState, useEffect } from 'react'
 import Layout from '@/components/Layout'
 import { api, AccountState } from '@/services/api'
 import { ethers } from 'ethers'
-import { formatAddress, formatAmount, parseAmount } from '@/utils/transactions'
+import {
+  formatAddress,
+  formatAmount,
+  parseAmount,
+  signTransactionCorrect,
+} from '@/utils/transactions'
+import { api } from '@/services/api'
 
 export default function Deposits() {
   const [address, setAddress] = useState<string | null>(null)
@@ -71,13 +77,18 @@ export default function Deposits() {
       return
     }
 
+    if (!accountState) {
+      alert('Please wait for account to load')
+      return
+    }
+
     if (!amount || parseFloat(amount) <= 0) {
       alert('Please enter a valid amount')
       return
     }
 
-    if (!depositContract) {
-      alert('Please enter deposit contract address')
+    if (!depositContract || !ethers.isAddress(depositContract)) {
+      alert('Please enter a valid deposit contract address')
       return
     }
 
@@ -101,15 +112,48 @@ export default function Deposits() {
       const assetIdNum = parseInt(assetId)
       const chainIdNum = parseInt(chainId)
 
-      // For now, we'll just show a message that deposit should be done on-chain
-      // The watcher will pick it up and create a deposit transaction
-      alert(
-        `To deposit:\n1. Call deposit(${assetIdNum}, ${amount}) on contract ${formatAddress(depositContract)}\n2. The watcher will automatically create a deposit transaction\n3. Check your account balance after the block is processed`
+      // Step 1: Call deposit on L1 contract
+      const tx = await contract.deposit(assetIdNum, amountWei)
+      const receipt = await tx.wait()
+
+      // Step 2: Get tx_hash from receipt
+      const txHash = receipt.hash
+
+      // Step 3: Create and sign deposit transaction for sequencer
+      const nonce = accountState.nonce
+      const payload = {
+        txHash: txHash,
+        account: address,
+        assetId: assetIdNum,
+        amount: amountWei.toString(),
+        chainId: chainIdNum,
+      }
+
+      const signature = await signTransactionCorrect(
+        signer,
+        address,
+        nonce,
+        'Deposit',
+        payload
       )
 
-      // TODO: In the future, we can automate this by calling the contract directly
-      // const tx = await contract.deposit(assetIdNum, amountWei)
-      // await tx.wait()
+      // Step 4: Submit transaction to sequencer
+      const submitRequest = {
+        kind: 'Deposit',
+        tx_hash: txHash,
+        account: address,
+        asset_id: assetIdNum,
+        amount: amountWei.toString(),
+        chain_id: chainIdNum,
+        nonce: nonce,
+        signature: signature,
+      }
+
+      const result = await api.submitTransaction(submitRequest)
+      alert(`Deposit submitted successfully!\nTransaction Hash: ${result.tx_hash}`)
+
+      // Reload account state
+      await loadAccountState(address)
     } catch (err: any) {
       setError(err.message || 'Failed to process deposit')
       console.error('Error processing deposit:', err)
