@@ -10,7 +10,6 @@ import {
   parseAmount,
   signTransactionCorrect,
 } from '@/utils/transactions'
-import { api } from '@/services/api'
 
 export default function Deposits() {
   const [address, setAddress] = useState<string | null>(null)
@@ -54,7 +53,14 @@ export default function Deposits() {
       .then((data: any) => {
         setSupportedChains(data.chains || [])
       })
-      .catch(console.error)
+      .catch((err: any) => {
+        console.error('Error loading supported chains:', err)
+        // Set default chains if API fails
+        setSupportedChains([
+          { chain_id: 11155111, name: 'Ethereum Sepolia' },
+          { chain_id: 84532, name: 'Base Sepolia' },
+        ])
+      })
   }, [])
 
   const loadAccountState = async (addr: string) => {
@@ -64,8 +70,27 @@ export default function Deposits() {
       const state = await api.getAccountState(addr)
       setAccountState(state)
     } catch (err: any) {
-      setError(err.message || 'Failed to load account state')
-      console.error('Error loading account state:', err)
+      console.log('loadAccountState error:', err)
+      console.log('Error response:', err.response)
+      console.log('Error status:', err.response?.status)
+      
+      // Handle 404 (account not found) as a normal case, not an error
+      if (err.response?.status === 404 || err.code === 'ERR_BAD_REQUEST') {
+        // Account doesn't exist yet - this is normal for new accounts
+        console.log('Account not found, creating empty account state')
+        setAccountState({
+          account_id: addr,
+          owner: addr,
+          balances: [],
+          nonce: 0,
+        })
+        setError(null)
+      } else {
+        // Real error
+        const errorMessage = err.response?.data?.message || err.message || 'Failed to load account state'
+        setError(errorMessage)
+        console.error('Error loading account state:', err)
+      }
     } finally {
       setLoading(false)
     }
@@ -139,17 +164,26 @@ export default function Deposits() {
 
       // Step 4: Submit transaction to sequencer
       const submitRequest = {
-        kind: 'Deposit',
-        tx_hash: txHash,
-        account: address,
-        asset_id: assetIdNum,
-        amount: amountWei.toString(),
-        chain_id: chainIdNum,
+        from: address,
         nonce: nonce,
+        kind: 'Deposit',
+        payload: {
+          tx_hash: txHash,
+          account: address,
+          assetId: assetIdNum,
+          amount: amountWei.toString(),
+          chainId: chainIdNum,
+        },
         signature: signature,
       }
 
-      const result = await api.submitTransaction(submitRequest)
+      const result = await api.submitTransaction(
+        submitRequest.from,
+        submitRequest.nonce,
+        submitRequest.kind,
+        submitRequest.payload,
+        submitRequest.signature
+      )
       alert(`Deposit submitted successfully!\nTransaction Hash: ${result.tx_hash}`)
 
       // Reload account state

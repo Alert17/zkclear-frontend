@@ -1,6 +1,11 @@
 import axios from 'axios'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+// For client-side requests, we need to use the full backend URL
+// Next.js rewrites only work for server-side requests
+const API_BASE_URL = 
+  typeof window !== 'undefined' 
+    ? (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000')
+    : 'http://localhost:3000' // Server-side can use direct URL
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -70,8 +75,16 @@ export const api = {
 
   // Account endpoints
   async getAccountState(address: string): Promise<AccountState> {
-    const response = await apiClient.get(`/api/v1/account/${address}`)
-    return response.data
+    try {
+      const response = await apiClient.get(`/api/v1/account/${address}`)
+      return response.data
+    } catch (error: any) {
+      // If account not found (404), throw with response info for proper handling
+      if (error.response?.status === 404) {
+        throw error // Re-throw so caller can handle it
+      }
+      throw error
+    }
   },
 
   async getAccountBalance(address: string, assetId: number): Promise<Balance> {
@@ -126,8 +139,20 @@ export const api = {
   },
 
   // Submit transaction
-  async submitTransaction(request: any) {
-    const response = await apiClient.post('/api/v1/transactions', request)
+  async submitTransaction(
+    from: string,
+    nonce: number,
+    kind: string,
+    payload: any,
+    signature: string
+  ) {
+    const response = await apiClient.post('/api/v1/transactions', {
+      from,
+      nonce,
+      kind,
+      payload,
+      signature,
+    })
     return response.data
   },
 }
