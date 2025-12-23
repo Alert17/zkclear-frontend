@@ -161,12 +161,12 @@ export default function Withdrawals() {
               <div className="space-y-2">
                 <div>
                   <span className="text-gray-600">Address: </span>
-                  <span className="font-mono">{formatAddress(address)}</span>
+                  <span className="font-mono text-gray-900">{formatAddress(address)}</span>
                 </div>
                 {accountState && (
                   <div>
                     <span className="text-gray-600">Nonce: </span>
-                    <span>{accountState.nonce}</span>
+                    <span className="text-gray-900">{accountState.nonce}</span>
                   </div>
                 )}
               </div>

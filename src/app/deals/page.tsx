@@ -122,7 +122,7 @@ export default function Deals() {
                 className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow"
               >
                 <div className="flex justify-between items-start mb-4">
-                  <h3 className="text-lg font-semibold">Deal #{deal.deal_id}</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Deal #{deal.deal_id}</h3>
                   <span
                     className={`px-2 py-1 text-xs rounded ${
                       deal.status === 'active'
@@ -138,21 +138,21 @@ export default function Deals() {
                 <div className="space-y-2 text-sm">
                   <div>
                     <span className="text-gray-600">Maker: </span>
-                    <span className="font-mono">{formatAddress(deal.maker)}</span>
+                    <span className="font-mono text-gray-900">{formatAddress(deal.maker)}</span>
                   </div>
                   {deal.taker && (
                     <div>
                       <span className="text-gray-600">Taker: </span>
-                      <span className="font-mono">{formatAddress(deal.taker)}</span>
+                      <span className="font-mono text-gray-900">{formatAddress(deal.taker)}</span>
                     </div>
                   )}
                   <div>
                     <span className="text-gray-600">Amount: </span>
-                    <span>{formatAmount(BigInt(deal.amount_base))}</span>
+                    <span className="text-gray-900">{formatAmount(BigInt(deal.amount_base))}</span>
                   </div>
                   <div>
                     <span className="text-gray-600">Price: </span>
-                    <span>{formatAmount(BigInt(deal.price_quote_per_base))}</span>
+                    <span className="text-gray-900">{formatAmount(BigInt(deal.price_quote_per_base))}</span>
                   </div>
                 </div>
               </Link>

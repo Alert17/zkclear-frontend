@@ -116,9 +116,35 @@ export function formatAmount(amount: bigint, decimals: number = 18): string {
 
 /**
  * Parse amount from string
+ * Handles invalid input gracefully by returning 0 instead of throwing
  */
 export function parseAmount(amount: string, decimals: number = 18): bigint {
-  return ethers.parseUnits(amount, decimals)
+  if (!amount || amount.trim() === '') {
+    return BigInt(0)
+  }
+  
+  // Remove any non-numeric characters except decimal point and minus sign
+  // Replace comma with dot for European number format
+  let cleaned = amount.trim()
+    .replace(',', '.') // Replace comma with dot
+    .replace(/[^\d.-]/g, '') // Remove all non-numeric characters except . and -
+  
+  // If empty after cleaning, return 0
+  if (!cleaned || cleaned === '' || cleaned === '-' || cleaned === '.') {
+    return BigInt(0)
+  }
+  
+  // Validate that it's a valid number
+  if (!/^-?\d*\.?\d+$/.test(cleaned)) {
+    return BigInt(0)
+  }
+  
+  try {
+    return ethers.parseUnits(cleaned, decimals)
+  } catch (error) {
+    console.warn('Failed to parse amount:', amount, error)
+    return BigInt(0)
+  }
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   signTransactionCorrect,
 } from '@/utils/transactions'
 import { ethers } from 'ethers'
+import { getChainName } from '@/constants/config'
 
 export default function DealDetails() {
   const params = useParams()
@@ -64,9 +65,51 @@ export default function DealDetails() {
     }
   }, [dealId, loadDeal])
 
+  // Debug logging for Accept button
+  useEffect(() => {
+    if (deal && address) {
+      const isMakerDebug = deal.maker.toLowerCase() === address?.toLowerCase()
+      const canAcceptDebug = !isMakerDebug && deal.status?.toLowerCase() === 'pending' && address && accountState
+      console.log('Deal details for Accept button:', {
+        dealMaker: deal.maker,
+        currentAddress: address,
+        isMaker: isMakerDebug,
+        dealStatus: deal.status,
+        hasAccountState: !!accountState,
+        canAccept: canAcceptDebug,
+      })
+    }
+  }, [deal, address, accountState])
+
   const handleAcceptDeal = async () => {
     if (!address || !window.ethereum || !accountState || !deal) {
       alert('Please connect your wallet and wait for account to load')
+      return
+    }
+
+    // Check if user has sufficient balance for the quote asset on quote chain
+    if (!deal.amount_remaining || !deal.price_quote_per_base) {
+      setError('Deal data is incomplete')
+      return
+    }
+    
+    const amountToFill = BigInt(deal.amount_remaining)
+    const amountQuote = amountToFill * BigInt(deal.price_quote_per_base)
+    
+    const requiredBalance = accountState.balances.find(
+      (b: any) => b.asset_id === deal.asset_quote && b.chain_id === deal.chain_id_quote
+    )
+    const currentBalance = requiredBalance ? BigInt(requiredBalance.amount) : BigInt(0)
+    
+    if (currentBalance < amountQuote) {
+      const chainName = getChainName(deal.chain_id_quote)
+      const requiredAmount = (amountQuote / BigInt(10 ** 18)).toString()
+      const currentAmount = (currentBalance / BigInt(10 ** 18)).toString()
+      setError(
+        `Insufficient balance! You need ${requiredAmount} ETH on ${chainName} (chain ${deal.chain_id_quote}) to accept this deal. ` +
+        `You currently have ${currentAmount} ETH. ` +
+        `Please make a deposit first on the ${chainName} network.`
+      )
       return
     }
 
@@ -195,8 +238,32 @@ export default function DealDetails() {
     )
   }
 
-  const isMaker = deal.maker.toLowerCase() === address?.toLowerCase()
-  const canAccept = !isMaker && deal.status === 'pending' && address
+  // Recalculate these values on every render to ensure they update when dependencies change
+  const isMaker = deal?.maker?.toLowerCase() === address?.toLowerCase()
+  
+  // Debug: Check each condition separately
+  // Note: Backend returns status with capital letter (e.g., "Pending"), so we use case-insensitive comparison
+  const condition1 = !isMaker
+  const condition2 = deal?.status?.toLowerCase() === 'pending'
+  const condition3 = !!address
+  const condition4 = !!accountState
+  
+  const canAccept = condition1 && condition2 && condition3 && condition4
+
+  // Debug: Log current state with detailed conditions
+  console.log('Render state (detailed):', {
+    hasDeal: !!deal,
+    dealMaker: deal?.maker,
+    currentAddress: address,
+    isMaker,
+    condition1_notIsMaker: condition1,
+    condition2_statusPending: condition2,
+    dealStatus: deal?.status,
+    condition3_hasAddress: condition3,
+    condition4_hasAccountState: condition4,
+    accountState: accountState,
+    canAccept,
+  })
 
   return (
     <Layout>
@@ -238,21 +305,21 @@ export default function DealDetails() {
           <div className="grid grid-cols-2 gap-6">
             <div>
               <h3 className="text-sm font-medium text-gray-500 mb-2">Maker</h3>
-              <p className="font-mono text-sm">{formatAddress(deal.maker)}</p>
+              <p className="font-mono text-sm text-gray-900">{formatAddress(deal.maker)}</p>
             </div>
             {deal.taker && (
               <div>
                 <h3 className="text-sm font-medium text-gray-500 mb-2">
                   Taker
                 </h3>
-                <p className="font-mono text-sm">{formatAddress(deal.taker)}</p>
+                <p className="font-mono text-sm text-gray-900">{formatAddress(deal.taker)}</p>
               </div>
             )}
             <div>
               <h3 className="text-sm font-medium text-gray-500 mb-2">
                 Base Asset
               </h3>
-              <p>ID: {deal.asset_base}</p>
+              <p className="text-gray-900">ID: {deal.asset_base}</p>
               <p className="text-xs text-gray-500">
                 Chain: {deal.chain_id_base}
               </p>
@@ -261,7 +328,7 @@ export default function DealDetails() {
               <h3 className="text-sm font-medium text-gray-500 mb-2">
                 Quote Asset
               </h3>
-              <p>ID: {deal.asset_quote}</p>
+              <p className="text-gray-900">ID: {deal.asset_quote}</p>
               <p className="text-xs text-gray-500">
                 Chain: {deal.chain_id_quote}
               </p>
@@ -270,7 +337,7 @@ export default function DealDetails() {
               <h3 className="text-sm font-medium text-gray-500 mb-2">
                 Amount (Base)
               </h3>
-              <p className="text-lg font-semibold">
+              <p className="text-lg font-semibold text-gray-900">
                 {formatAmount(BigInt(deal.amount_base))}
               </p>
               {deal.amount_remaining && (
@@ -281,7 +348,7 @@ export default function DealDetails() {
             </div>
             <div>
               <h3 className="text-sm font-medium text-gray-500 mb-2">Price</h3>
-              <p className="text-lg font-semibold">
+              <p className="text-lg font-semibold text-gray-900">
                 {formatAmount(BigInt(deal.price_quote_per_base))} per base
               </p>
             </div>
@@ -295,28 +362,83 @@ export default function DealDetails() {
           )}
 
           {/* Actions */}
-          {address && (
-            <div className="flex space-x-4 pt-4 border-t">
-              {canAccept && (
-                <button
-                  onClick={handleAcceptDeal}
-                  disabled={processing}
-                  className="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
-                >
-                  {processing ? 'Processing...' : 'Accept Deal'}
-                </button>
-              )}
-              {isMaker && deal.status === 'pending' && (
-                <button
-                  onClick={handleCancelDeal}
-                  disabled={processing}
-                  className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
-                >
-                  {processing ? 'Processing...' : 'Cancel Deal'}
-                </button>
-              )}
-            </div>
-          )}
+          <div className="pt-4 border-t">
+            {!address ? (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-blue-800 mb-2">
+                  <strong>Connect your wallet</strong> to accept this deal.
+                </p>
+                <p className="text-sm text-blue-600">
+                  Use the &quot;Connect Wallet&quot; button in the header to connect your MetaMask wallet.
+                </p>
+              </div>
+            ) : !accountState ? (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                <p className="text-yellow-800 mb-2">
+                  <strong>Loading account...</strong>
+                </p>
+                <p className="text-sm text-yellow-600">
+                  Please wait while we load your account information.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col space-y-4">
+                {/* Debug info */}
+                <div className="p-2 bg-gray-100 rounded text-xs text-gray-600 space-y-1">
+                  <div><strong>Debug:</strong></div>
+                  <div>canAccept: {canAccept ? 'true' : 'false'}</div>
+                  <div>isMaker: {isMaker ? 'true' : 'false'}</div>
+                  <div>!isMaker: {!isMaker ? 'true' : 'false'}</div>
+                  <div>status: {deal?.status || 'undefined'}</div>
+                  <div>status === &apos;pending&apos;: {(deal?.status === 'pending') ? 'true' : 'false'}</div>
+                  <div>hasAddress: {address ? 'yes' : 'no'}</div>
+                  <div>hasAccountState: {accountState ? 'yes' : 'no'}</div>
+                  <div>deal?.maker: {deal?.maker || 'undefined'}</div>
+                  <div>address: {address || 'undefined'}</div>
+                  <div>condition1 (!isMaker): {condition1 ? 'true' : 'false'}</div>
+                  <div>condition2 (status pending): {condition2 ? 'true' : 'false'}</div>
+                  <div>condition3 (hasAddress): {condition3 ? 'true' : 'false'}</div>
+                  <div>condition4 (hasAccountState): {condition4 ? 'true' : 'false'}</div>
+                </div>
+                
+                <div className="flex space-x-4">
+                  {canAccept && (
+                    <button
+                      onClick={handleAcceptDeal}
+                      disabled={processing}
+                      className="px-6 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
+                    >
+                      {processing ? 'Processing...' : 'Accept Deal'}
+                    </button>
+                  )}
+                  {isMaker && deal.status?.toLowerCase() === 'pending' && (
+                    <button
+                      onClick={handleCancelDeal}
+                      disabled={processing}
+                      className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {processing ? 'Processing...' : 'Cancel Deal'}
+                    </button>
+                  )}
+                  {!canAccept && !isMaker && deal.status?.toLowerCase() === 'pending' && (
+                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-md">
+                      <p className="text-gray-800 mb-1">
+                        <strong>Cannot accept this deal</strong>
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Debug: isMaker={isMaker ? 'true' : 'false'}, status={deal.status}, hasAddress={address ? 'yes' : 'no'}, hasAccountState={accountState ? 'yes' : 'no'}
+                      </p>
+                    </div>
+                  )}
+                  {!canAccept && isMaker && (
+                    <p className="text-gray-600 py-2">
+                      You created this deal. You can cancel it if it&apos;s still pending.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </Layout>

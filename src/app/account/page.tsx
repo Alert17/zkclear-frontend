@@ -62,17 +62,17 @@ export default function Account() {
               <div className="space-y-2">
                 <div>
                   <span className="text-gray-600">Address: </span>
-                  <span className="font-mono">{formatAddress(address)}</span>
+                  <span className="font-mono text-gray-900">{formatAddress(address)}</span>
                 </div>
                 {accountState && (
                   <>
                     <div>
                       <span className="text-gray-600">Account ID: </span>
-                      <span className="font-mono">{accountState.account_id}</span>
+                      <span className="font-mono text-gray-900">{accountState.account_id}</span>
                     </div>
                     <div>
                       <span className="text-gray-600">Nonce: </span>
-                      <span>{accountState.nonce}</span>
+                      <span className="text-gray-900">{accountState.nonce}</span>
                     </div>
                   </>
                 )}

@@ -62,23 +62,11 @@ export default function Home() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-xl font-semibold mb-2">Deposits</h2>
-              <p className="text-gray-600 mb-4">
-                Deposit assets from L1 chains to start trading
-              </p>
-              <Link
-                href="/deposits"
-                className="text-primary-600 hover:text-primary-700 font-medium"
-              >
-                Go to Deposits →
-              </Link>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-12">
             <div className="bg-white p-6 rounded-lg shadow">
               <h2 className="text-xl font-semibold mb-2">Deals</h2>
               <p className="text-gray-600 mb-4">
-                Create and manage OTC settlement deals
+                Create and manage OTC settlement deals. Deposit is automatic when needed.
               </p>
               <Link
                 href="/deals"

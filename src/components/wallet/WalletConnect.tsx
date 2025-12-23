@@ -1,10 +1,39 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function WalletConnect() {
   const [address, setAddress] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
+
+  // Check for already connected wallet on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.ethereum) {
+      window.ethereum
+        .request({ method: 'eth_accounts' })
+        .then((accounts: string[]) => {
+          if (accounts.length > 0) {
+            setAddress(accounts[0])
+          }
+        })
+        .catch(console.error)
+
+      // Listen for account changes
+      const handleAccountsChanged = (accounts: string[]) => {
+        if (accounts.length > 0) {
+          setAddress(accounts[0])
+        } else {
+          setAddress(null)
+        }
+      }
+
+      window.ethereum.on('accountsChanged', handleAccountsChanged)
+
+      return () => {
+        window.ethereum?.removeListener('accountsChanged', handleAccountsChanged)
+      }
+    }
+  }, [])
 
   const connectWallet = async () => {
     if (typeof window.ethereum === 'undefined') {
@@ -14,22 +43,73 @@ export default function WalletConnect() {
 
     setIsConnecting(true)
     try {
-      const accounts = await window.ethereum.request({
-        method: 'eth_requestAccounts',
+      // First, try to revoke existing permissions to force account selection
+      try {
+        await window.ethereum.request({
+          method: 'wallet_revokePermissions',
+          params: [{ eth_accounts: {} }],
+        })
+        console.log('🔓 Revoked existing permissions')
+      } catch (revokeError: any) {
+        // Ignore errors if no permissions exist
+        if (revokeError.code !== -32602) {
+          console.log('⚠️ Could not revoke permissions (may not exist):', revokeError)
+        }
+      }
+
+      // Request new permissions - this will always show the account picker
+      const permissions = await window.ethereum.request({
+        method: 'wallet_requestPermissions',
+        params: [{ eth_accounts: {} }],
       })
+      console.log('🔌 Permissions granted:', permissions)
+
+      // Get accounts after permissions are granted
+      const accounts = await window.ethereum.request({
+        method: 'eth_accounts',
+      })
+      console.log('🔌 Wallet connected:', accounts)
+      
       if (accounts.length > 0) {
         setAddress(accounts[0])
+        // Trigger accountsChanged event to notify all pages
+        window.dispatchEvent(new Event('accountsChanged'))
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error connecting wallet:', error)
-      alert('Failed to connect wallet')
+      if (error.code === 4001) {
+        alert('Connection rejected. Please approve the connection request in MetaMask.')
+      } else {
+        alert('Failed to connect wallet: ' + (error.message || 'Unknown error'))
+      }
     } finally {
       setIsConnecting(false)
     }
   }
 
-  const disconnect = () => {
-    setAddress(null)
+  const disconnect = async () => {
+    try {
+      // Try to revoke permissions in MetaMask
+      if (window.ethereum) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_revokePermissions',
+            params: [{ eth_accounts: {} }],
+          })
+          console.log('🔓 Permissions revoked in MetaMask')
+        } catch (revokeError: any) {
+          console.log('⚠️ Could not revoke permissions:', revokeError)
+        }
+      }
+    } catch (error) {
+      console.error('Error disconnecting:', error)
+    } finally {
+      // Always clear local state
+      setAddress(null)
+      // Trigger event to notify all pages
+      window.dispatchEvent(new Event('accountsChanged'))
+      console.log('🔓 Disconnected locally')
+    }
   }
 
   const formatAddress = (addr: string) => {

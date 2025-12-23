@@ -14,6 +14,18 @@ const apiClient = axios.create({
   },
 })
 
+// Add response interceptor for debugging
+apiClient.interceptors.response.use(
+  (response) => {
+    console.log('✅ API Response:', response.config.url, response.status)
+    return response
+  },
+  (error) => {
+    console.log('❌ API Error:', error.config?.url, error.response?.status, error.response?.data)
+    return Promise.reject(error)
+  }
+)
+
 // Types
 export interface AccountState {
   account_id: string
@@ -75,14 +87,28 @@ export const api = {
 
   // Account endpoints
   async getAccountState(address: string): Promise<AccountState> {
+    console.log('📡 api.getAccountState called for:', address)
     try {
       const response = await apiClient.get(`/api/v1/account/${address}`)
-      return response.data
-    } catch (error: any) {
-      // If account not found (404), throw with response info for proper handling
-      if (error.response?.status === 404) {
-        throw error // Re-throw so caller can handle it
+      console.log('✅ api.getAccountState success:', response.data)
+      // Backend returns AccountStateResponse, convert to AccountState
+      const data = response.data
+      return {
+        account_id: data.account_id?.toString() || address,
+        owner: data.address 
+          ? `0x${Array.from(data.address).map((b: number) => b.toString(16).padStart(2, '0')).join('')}`
+          : address,
+        balances: (data.balances || []).map((b: any) => ({
+          asset_id: b.asset_id,
+          chain_id: b.chain_id,
+          amount: b.amount?.toString() || '0',
+        })),
+        nonce: data.nonce || 0,
       }
+    } catch (error: any) {
+      console.log('❌ api.getAccountState error:', error)
+      console.log('Error response:', error.response)
+      console.log('Error status:', error.response?.status)
       throw error
     }
   },
@@ -101,12 +127,35 @@ export const api = {
     visibility?: string
   }): Promise<{ deals: Deal[]; total: number }> {
     const response = await apiClient.get('/api/v1/deals', { params })
-    return response.data
+    const data = response.data
+    // Convert address arrays to hex strings for all deals
+    return {
+      ...data,
+      deals: data.deals.map((deal: any) => ({
+        ...deal,
+        maker: Array.isArray(deal.maker)
+          ? `0x${Array.from(deal.maker).map((b: number) => b.toString(16).padStart(2, '0')).join('')}`
+          : deal.maker,
+        taker: deal.taker && Array.isArray(deal.taker)
+          ? `0x${Array.from(deal.taker).map((b: number) => b.toString(16).padStart(2, '0')).join('')}`
+          : deal.taker,
+      })),
+    }
   },
 
   async getDealDetails(dealId: number): Promise<Deal> {
     const response = await apiClient.get(`/api/v1/deal/${dealId}`)
-    return response.data
+    const data = response.data
+    // Convert address arrays to hex strings
+    return {
+      ...data,
+      maker: Array.isArray(data.maker)
+        ? `0x${Array.from(data.maker).map((b: number) => b.toString(16).padStart(2, '0')).join('')}`
+        : data.maker,
+      taker: data.taker && Array.isArray(data.taker)
+        ? `0x${Array.from(data.taker).map((b: number) => b.toString(16).padStart(2, '0')).join('')}`
+        : data.taker,
+    }
   },
 
   // Block endpoints
@@ -139,20 +188,9 @@ export const api = {
   },
 
   // Submit transaction
-  async submitTransaction(
-    from: string,
-    nonce: number,
-    kind: string,
-    payload: any,
-    signature: string
-  ) {
-    const response = await apiClient.post('/api/v1/transactions', {
-      from,
-      nonce,
-      kind,
-      payload,
-      signature,
-    })
+  // For CreateDeal, all fields should be at top level, not in payload
+  async submitTransaction(request: any) {
+    const response = await apiClient.post('/api/v1/transactions', request)
     return response.data
   },
 }
